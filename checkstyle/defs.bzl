@@ -17,8 +17,11 @@ def _impl(ctx):
 
     arguments = ctx.actions.args()
 
-    report_file = ctx.actions.declare_file("{name}_checkstyle_report.txt".format(
+    arguments.add("-f", ctx.attr.format)
+
+    report_file = ctx.actions.declare_file("{name}_checkstyle_report.{extension}".format(
         name = ctx.label.name,
+        extension = _report_extension.get(ctx.attr.format)
     ))
 
     arguments.add("-o", report_file)
@@ -30,7 +33,6 @@ def _impl(ctx):
     if ctx.attr.debug:
         arguments.add("-d")
 
-    arguments.add("-f", "xml")
 
     if len(ctx.files.srcs) != 0:
         srcs_file = _write_files_list(ctx, ctx.files.srcs, "srcs.txt")
@@ -50,6 +52,11 @@ def _impl(ctx):
     )
 
     return [DefaultInfo(files = depset(outputs))]
+
+_report_extension = {
+    "plain":"txt",
+    "xml":"xml",
+}
 
 def _write_files_list(ctx, files, file_name):
     file = ctx.actions.declare_file(file_name)
@@ -76,6 +83,11 @@ checkstyle = rule(
         "debug": attr.bool(
             doc = "Prints all debug logging of CheckStyle utility.",
         ),
+        "format": attr.string(
+            default = "plain",
+            doc = "Specifies the output format. Valid values: xml, plain for XMLLogger and DefaultLogger respectively. Defaults to plain.",
+            values = ["plain","xml"],
+            ),
     },
     provides = [DefaultInfo],
 )
