@@ -24,11 +24,13 @@ def _impl(ctx):
     arguments.add("-o", report_file)
     outputs.append(report_file)
 
-    arguments.add("-c",ctx.file.config.path)
+    arguments.add("-c", ctx.file.config.path)
     inputs.append(ctx.file.config)
 
-    arguments.add("-d")
-    arguments.add("-f","xml")
+    if ctx.attr.debug:
+        arguments.add("-d")
+
+    arguments.add("-f", "xml")
 
     if len(ctx.files.srcs) != 0:
         srcs_file = _write_files_list(ctx, ctx.files.srcs, "srcs.txt")
@@ -60,12 +62,19 @@ def _write_files_list(ctx, files, file_name):
 checkstyle = rule(
     implementation = _impl,
     attrs = {
-        "_executable": attr.label(default = "//checkstyle:checkstyle", executable = True, cfg = "host"),
+        "_executable": attr.label(
+            default = "//checkstyle:checkstyle",
+            executable = True,
+            cfg = "host",
+        ),
         "srcs": attr.label_list(allow_files = True),
         "config": attr.label(
             allow_single_file = True,
             mandatory = True,
             doc = "Specifies the location of the file that defines the configuration modules. The location can either be a filesystem location, or a name passed to the ClassLoader.getResource() method.",
+        ),
+        "debug": attr.bool(
+            doc = "Prints all debug logging of CheckStyle utility.",
         ),
     },
     provides = [DefaultInfo],
