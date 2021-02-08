@@ -21,7 +21,7 @@ def _impl(ctx):
 
     report_file = ctx.actions.declare_file("{name}_checkstyle_report.{extension}".format(
         name = ctx.label.name,
-        extension = _report_extension.get(ctx.attr.format)
+        extension = _report_extension.get(ctx.attr.format),
     ))
 
     arguments.add("-o", report_file)
@@ -33,15 +33,9 @@ def _impl(ctx):
     if ctx.attr.debug:
         arguments.add("-d")
 
-
     if len(ctx.files.srcs) != 0:
-        srcs_file = _write_files_list(ctx, ctx.files.srcs, "srcs.txt")
-
         arguments.add_all(ctx.files.srcs)
-        inputs.append(srcs_file)
         inputs.extend(ctx.files.srcs)
-
-    src_file = ctx.actions.declare_file("srcs.txt")
 
     ctx.actions.run(
         mnemonic = "Checkstlye",
@@ -54,17 +48,38 @@ def _impl(ctx):
     return [DefaultInfo(files = depset(outputs))]
 
 _report_extension = {
-    "plain":"txt",
-    "xml":"xml",
+    "plain": "txt",
+    "xml": "xml",
 }
 
-def _write_files_list(ctx, files, file_name):
-    file = ctx.actions.declare_file(file_name)
-    file_content = ",".join([src.path for src in files])
+_checkstyle_test = rule(
+    implementation = _impl,
+    attrs = {
+        "_executable": attr.label(
+            default = "//checkstyle:checkstyle",
+            executable = True,
+            cfg = "host",
+        ),
+        "srcs": attr.label_list(allow_files = [".java"]),
+        "config": attr.label(
+            allow_single_file = True,
+            mandatory = True,
+            doc = "Specifies the location of the file that defines the configuration modules. The location can either be a filesystem location, or a name passed to the ClassLoader.getResource() method.",
+        ),
+        "debug": attr.bool(
+            doc = "Prints all debug logging of CheckStyle utility.",
+        ),
+        "format": attr.string(
+            default = "plain",
+            doc = "Specifies the output format. Valid values: xml, plain for XMLLogger and DefaultLogger respectively. Defaults to plain.",
+            values = ["plain", "xml"],
+        ),
+    },
+    test = True,
+)
 
-    ctx.actions.write(file, file_content, is_executable = False)
-
-    return file
+def checkstyle_test(name, srcs = [], **kwargs):
+  _checkstyle_test(name=name, srcs=srcs, **kwargs)
 
 checkstyle = rule(
     implementation = _impl,
@@ -86,8 +101,8 @@ checkstyle = rule(
         "format": attr.string(
             default = "plain",
             doc = "Specifies the output format. Valid values: xml, plain for XMLLogger and DefaultLogger respectively. Defaults to plain.",
-            values = ["plain","xml"],
-            ),
+            values = ["plain", "xml"],
+        ),
     },
     provides = [DefaultInfo],
 )
