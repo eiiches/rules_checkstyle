@@ -3,49 +3,46 @@ Checkstlye rule source
 """
 
 def _impl(ctx):
-    name = ctx.label.name
-    srcs = ctx.files.srcs
-
-    #deps = ctx.files.deps
-    #config = ctx.files.config
-    #properties = ctx.file.properties
-    #suppressions = ctx.file.suppressions
-    #opts = ctx.attr.opts
-    #sopts = ctx.attr.string_opts
-    inputs = []
     outputs = []
 
-    arguments = ctx.actions.args()
+    arguments = []
+    arguments.append(ctx.executable._executable.short_path)
 
-    arguments.add("-f", ctx.attr.format)
+    if ctx.file.suppressions:
+        arguments.append("--jvm_flag=-Dcheckstyle.suppressions.file=" + ctx.file.suppressions.path)
 
-    report_file = ctx.actions.declare_file("{name}_checkstyle_report.{extension}".format(
-        name = ctx.label.name,
-        extension = _report_extension.get(ctx.attr.format),
-    ))
+    if ctx.attr.runtime_deps:
+        classpaths = ":".join([runtime_dep.short_path for runtime_dep in ctx.files.runtime_deps])
+        arguments.append("--main_advice_classpath={}".format(classpaths))
 
-    arguments.add("-o", report_file)
-    outputs.append(report_file)
+    arguments.append("-f")
+    arguments.append(ctx.attr.format)
 
-    arguments.add("-c", ctx.file.config.path)
-    inputs.append(ctx.file.config)
+    arguments.append("-c")
+    arguments.append(ctx.file.config.path)
 
     if ctx.attr.debug:
-        arguments.add("-d")
+        arguments.append("-d")
 
-    if len(ctx.files.srcs) != 0:
-        arguments.add_all(ctx.files.srcs)
-        inputs.extend(ctx.files.srcs)
+    arguments.extend([src.path for src in ctx.files.srcs])
 
-    ctx.actions.run(
-        mnemonic = "Checkstlye",
-        executable = ctx.executable._executable,
-        inputs = inputs,
-        outputs = outputs,
-        arguments = [arguments],
+    script_file = ctx.actions.declare_file(ctx.label.name)
+    ctx.actions.write(
+        output = script_file,
+        content = " ".join(arguments),
+        is_executable = True,
     )
 
-    return [DefaultInfo(files = depset(outputs))]
+    runfiles = ctx.runfiles(files = [script_file, ctx.executable._executable, ctx.file.config] + ctx.files.srcs + ctx.files.runtime_deps)
+    runfiles = runfiles.merge_all([
+        target[DefaultInfo].default_runfiles for target in (ctx.attr.srcs + [ctx.attr._executable, ctx.attr.config] + ctx.attr.runtime_deps)
+    ])
+    if ctx.file.suppressions:
+        runfiles = runfiles.merge_all([
+            ctx.runfiles(files = [ctx.file.suppressions]),
+            ctx.attr.suppressions[DefaultInfo].default_runfiles,
+        ])
+    return [DefaultInfo(files = depset(outputs), runfiles = runfiles, executable = script_file)]
 
 _report_extension = {
     "plain": "txt",
@@ -60,7 +57,7 @@ _checkstyle_test = rule(
             executable = True,
             cfg = "host",
         ),
-        "srcs": attr.label_list(allow_files = [".java"]),
+        "srcs": attr.label_list(allow_files = [".java"], allow_empty=False),
         "config": attr.label(
             allow_single_file = True,
             mandatory = True,
@@ -73,6 +70,13 @@ _checkstyle_test = rule(
             default = "plain",
             doc = "Specifies the output format. Valid values: xml, plain for XMLLogger and DefaultLogger respectively. Defaults to plain.",
             values = ["plain", "xml"],
+        ),
+        "suppressions": attr.label(
+            allow_single_file=True,
+        ),
+        "runtime_deps": attr.label_list(
+            providers = [JavaInfo],
+            doc = "List of java_library that contain classes necessary for custom checks.",
         ),
     },
     test = True,
@@ -102,6 +106,13 @@ checkstyle = rule(
             default = "plain",
             doc = "Specifies the output format. Valid values: xml, plain for XMLLogger and DefaultLogger respectively. Defaults to plain.",
             values = ["plain", "xml"],
+        ),
+        "suppressions": attr.label(
+            allow_single_file=True,
+        ),
+        "runtime_deps": attr.label_list(
+            providers = [JavaInfo],
+            doc = "List of java_library that contain classes necessary for custom checks.",
         ),
     },
     provides = [DefaultInfo],
